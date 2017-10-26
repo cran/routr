@@ -1,8 +1,8 @@
 Package: routr
 Type: Package
 Title: A Simple Router for HTTP and WebSocket Requests
-Version: 0.2.0
-Date: 2017-08-21
+Version: 0.3.0
+Date: 2017-10-26
 Authors@R: c(
     person('Thomas Lin', 'Pedersen', , 'thomasp85@gmail.com', c('aut', 'cre'))
     )
@@ -21,7 +21,7 @@ Suggests: testthat, covr, fiery
 URL: https://github.com/thomasp85/routr#routr
 BugReports: https://github.com/thomasp85/routr/issues
 NeedsCompilation: no
-Packaged: 2017-08-22 15:39:09 UTC; thomas
+Packaged: 2017-10-26 07:57:17 UTC; thomas
 Author: Thomas Lin Pedersen [aut, cre]
 Repository: CRAN
-Date/Publication: 2017-08-22 17:24:59 UTC
+Date/Publication: 2017-10-26 08:19:50 UTC
