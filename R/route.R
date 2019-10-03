@@ -72,6 +72,14 @@
 #'  \item{`remove_handler(method, path)`}{Removes the handler assigned to the
 #'  specified method and path. If no handler have been assigned it will throw a
 #'  warning.}
+#'  \item{`get_handler(method, path)`}{Returns a handler already assigned
+#'  to the specified method and path. If no handler have been assigned it will
+#'  throw a warning.}
+#'  \item{`remap_handlers(.f)`}{Allows you to loop through all added handlers
+#'  and reassings them at will. A function with the parameters `method`, `path`,
+#'  and `handler` must be provided which is responsible for reassigning the
+#'  handler given in the arguments. If the function does not reassign the
+#'  handler, then the handler is removed.}
 #'  \item{`dispatch(request, ...)`}{Based on a [reqres::Request] object the
 #'  route will find the correct handler and call it with the correct arguments.
 #'  Anything passed in with `...` will be passed along to the handler.}
@@ -165,8 +173,34 @@ Route <- R6Class('Route',
       }
       invisible(self)
     },
+    get_handler = function (method, path) {
+      id <- private$find_id(method, path)
+      if (is.null(id)) {
+        warning("No handler assigned to ", method, " and ", path,
+                call. = FALSE)
+      }
+      get(id, envir = private$handlerStore)
+    },
+    remap_handlers = function(.f) {
+      assert_that(is.function(.f))
+      assert_that(has_args(.f, c('method', 'path', 'handler')))
+      old_map <- private$handlerMap
+      old_store <- private$handlerStore
+      private$handlerMap <- list()
+      private$handlerStore <- new.env(parent = emptyenv())
+      
+      lapply(names(old_map), function(method) {
+        lapply(names(old_map[[method]]), function(path) {
+          .f(method = method, path = path, handler = old_store[[old_map[[method]][[path]]$id]])
+        })
+      })
+      invisible(self)
+    },
     dispatch = function(request, ...) {
       assert_that(is.Request(request))
+
+      if (!grepl(self$root, request$path)) return(TRUE)
+
       response <- request$respond()
 
       method <- request$method
@@ -183,10 +217,18 @@ Route <- R6Class('Route',
       continue
     }
   ),
+  active = list(
+    root = function(value) {
+      if (missing(value)) return(private$ROOT)
+      assert_that(is.string(value))
+      private$ROOT <- paste0('^/', gsub('(^/)|(/$)', '', value))
+    }
+  ),
   private = list(
     # Data
     handlerMap = NULL,
     handlerStore = NULL,
+    ROOT = '',
     # Methods
     find_id = function(method, path) {
       private$handlerMap[[method]][[path]]$id
@@ -250,9 +292,10 @@ Route <- R6Class('Route',
       )
     },
     match_url = function(url, method) {
-      if (is.null(private$handlerMap[[method]])) return(NULL)
+      if (length(private$handlerMap[[method]]) == 0) return(NULL)
       url <- tolower(url)
       regexes <- vapply(private$handlerMap[[method]], `[[`, character(1), i = 'regex')
+      regexes <- paste0(self$root, regexes)
       url_match <- NA
       for (i in seq_along(regexes)) {
         url_match <- stri_match_first(url, regex = regexes[i])[1,]
