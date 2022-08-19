@@ -1,7 +1,7 @@
 Package: routr
 Type: Package
 Title: A Simple Router for HTTP and WebSocket Requests
-Version: 0.4.0
+Version: 0.4.1
 Authors@R: 
     c(person(given = "Thomas Lin",
              family = "Pedersen",
@@ -16,17 +16,15 @@ Description: In order to make sure that web request ends up in the correct
     servers.
 License: MIT + file LICENSE
 Encoding: UTF-8
-LazyData: TRUE
-Imports: R6, httpuv, assertthat, uuid, utils, reqres, stringi, tools,
-        digest
-RoxygenNote: 6.1.1
+Imports: R6, assertthat, uuid, reqres, stringi, tools, digest
+RoxygenNote: 7.2.1
 Suggests: testthat, covr, fiery
 URL: https://routr.data-imaginist.com,
         https://github.com/thomasp85/routr#routr
 BugReports: https://github.com/thomasp85/routr/issues
 NeedsCompilation: no
-Packaged: 2019-10-03 06:52:38 UTC; thomas
+Packaged: 2022-08-19 13:22:22 UTC; thomas
 Author: Thomas Lin Pedersen [cre, aut]
     (<https://orcid.org/0000-0002-5147-4711>)
 Repository: CRAN
-Date/Publication: 2019-10-03 07:20:02 UTC
+Date/Publication: 2022-08-19 13:40:05 UTC

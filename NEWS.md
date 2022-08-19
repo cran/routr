@@ -1,3 +1,7 @@
+# routr 0.4.1
+
+* General upkeep
+
 # routr 0.4.0
 
 * Add `get_handler()` method to `Route` (#9, @cpsievert)
