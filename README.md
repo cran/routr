@@ -8,10 +8,10 @@
 [![Lifecycle:
 stable](https://img.shields.io/badge/lifecycle-stable-brightgreen.svg)](https://lifecycle.r-lib.org/articles/stages.html#stable)
 [![R-CMD-check](https://github.com/thomasp85/routr/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/thomasp85/routr/actions/workflows/R-CMD-check.yaml)
-[![CRAN_Status_Badge](http://www.r-pkg.org/badges/version-ago/routr)](https://cran.r-project.org/package=routr)
-[![CRAN_Download_Badge](http://cranlogs.r-pkg.org/badges/routr)](https://cran.r-project.org/package=routr)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/routr)](https://CRAN.R-project.org/package=routr)
 [![Codecov test
-coverage](https://codecov.io/gh/thomasp85/routr/branch/main/graph/badge.svg)](https://app.codecov.io/gh/thomasp85/routr?branch=main)
+coverage](https://codecov.io/gh/thomasp85/routr/graph/badge.svg)](https://app.codecov.io/gh/thomasp85/routr)
 <!-- badges: end -->
 
 routr is a simple and versatile router for R based web servers. For
@@ -49,8 +49,8 @@ first route in the stack. Depending on whether the route can handle the
 request and whether the handler signals a fall-through, the request is
 passed along the stack until a handler signals that no further
 processing should be done. This means that it is possible to stack
-different functionality like user verification, static ressource
-serving, etc. on top of each other.
+different functionality like user verification, static resource serving,
+etc. on top of each other.
 
 ### The handler
 

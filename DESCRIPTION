@@ -1,7 +1,7 @@
 Package: routr
 Type: Package
 Title: A Simple Router for HTTP and WebSocket Requests
-Version: 0.4.1
+Version: 1.0.0
 Authors@R: 
     c(person(given = "Thomas Lin",
              family = "Pedersen",
@@ -9,22 +9,26 @@ Authors@R:
              email = "thomasp85@gmail.com",
              comment = c(ORCID = "0000-0002-5147-4711")))
 Maintainer: Thomas Lin Pedersen <thomasp85@gmail.com>
-Description: In order to make sure that web request ends up in the correct 
+Description: In order to make sure that web request ends up in the correct
     handler function a router is often used. 'routr' is a package implementing a
     simple but powerful routing functionality for R based servers. It is a fully
     functional 'fiery' plugin, but can also be used with other 'httpuv' based
     servers.
 License: MIT + file LICENSE
 Encoding: UTF-8
-Imports: R6, assertthat, uuid, reqres, stringi, tools, digest
-RoxygenNote: 7.2.1
-Suggests: testthat, covr, fiery
+Imports: R6, reqres (>= 1.0.0), stringi, rlang (>= 1.1.0), cli,
+        lifecycle, fs, promises, brio
+RoxygenNote: 7.3.2
+Suggests: testthat (>= 3.0.0), covr, fiery (>= 1.3.0), swagger, redoc,
+        rapidoc, rmarkdown, quarto, mirai, knitr, later
 URL: https://routr.data-imaginist.com,
-        https://github.com/thomasp85/routr#routr
+        https://github.com/thomasp85/routr
 BugReports: https://github.com/thomasp85/routr/issues
+Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2022-08-19 13:22:22 UTC; thomas
-Author: Thomas Lin Pedersen [cre, aut]
-    (<https://orcid.org/0000-0002-5147-4711>)
+Packaged: 2025-08-21 05:51:40 UTC; thomas
+Author: Thomas Lin Pedersen [cre, aut] (ORCID:
+    <https://orcid.org/0000-0002-5147-4711>)
+Depends: R (>= 4.1.0)
 Repository: CRAN
-Date/Publication: 2022-08-19 13:40:05 UTC
+Date/Publication: 2025-08-21 06:10:09 UTC

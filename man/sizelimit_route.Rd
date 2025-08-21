@@ -4,15 +4,19 @@
 \alias{sizelimit_route}
 \title{Limit the size of requests}
 \usage{
-sizelimit_route(limit = 5 * 1024^2)
+sizelimit_route(limit = 5 * 1024^2, method = "all", path = "*")
 }
 \arguments{
 \item{limit}{Either a numeric or a function returning a numeric when called
 with the request}
+
+\item{method}{The method this route should respond to. Defaults to \code{"all"}}
+
+\item{path}{The URL path this route should respond to. Defaults to \code{"*"} (any
+path)}
 }
 \value{
-\code{TRUE} if the request are allowed to proceed, or \code{FALSE} if it should
-be terminated
+A \link{Route} object
 }
 \description{
 This route is meant for being called prior to retrieving of the request body.
@@ -35,6 +39,9 @@ req$respond()
 }
 \seealso{
 Other Route constructors: 
-\code{\link{ressource_route}()}
+\code{\link{asset_route}()},
+\code{\link{openapi_route}()},
+\code{\link{resource_route}()},
+\code{\link{shared_secret_route}()}
 }
 \concept{Route constructors}
