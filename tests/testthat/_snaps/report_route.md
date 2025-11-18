@@ -37,7 +37,7 @@
         res) { })
     Condition
       Error in `report_route()`:
-      ! `finalize` must be a function taking `...` as argument
+      ! `finalize` take at least three arguments
 
 ---
 

@@ -2,17 +2,19 @@
 #'
 #' This route allows you to serve a report written as a Quarto/Rmarkdown
 #' document. The report will be rendered on demand using the query params as
-#' parameters for the report if they match. Depending on the value of the value
-#' of `max_age` the rendered report is kept and served without a re-render on
-#' subsequent requests. The rendering can happen asynchronously in which case
-#' a promise is returned.
+#' parameters for the report if they match, or by providing them in the body of
+#' a POST request. Depending on the value of the value of `max_age` the rendered
+#' report is kept and served without a re-render on subsequent requests. The
+#' rendering can happen asynchronously in which case a promise is returned.
 #'
 #' @details
 #' Only the formats explicitely stated in the header of the report are allowed
-#' and the will be selected through content negotiation. That means that if
-#' multiple formats produces the same file type, only the first will be
-#' available. If no format is specified the default for both Quarto and
-#' Rmarkdown documents is HTML
+#' and they can be selected in multiple ways. Either by appending the name of
+#' the format as a subpath to the path (e.g. `/report/revealjs`), by appending
+#' the extension of the output type to the path (e.g. `/report.pdf`), or by
+#' standard content negotiation using the `Content-Type` header of the request.
+#' For the latter two, it is only possible to select the first format of any
+#' kind that has the same mime-type/extension.
 #'
 #' @param path The url path to serve the report from
 #' @param file The quarto or rmarkdown file to use for rendering of the report
@@ -23,31 +25,67 @@
 #' @param async Should rendering happen asynchronously (using mirai)
 #' @param finalize An optional function to run before sending the response back.
 #' The function will receive the request as the first argument, the response as
-#' the second, and anything passed on through `...` in the `dispatch` method.
-#' Any return value from the function is discarded. The function must accept
-#' `...`
+#' the second, and the server as the third.
 #' @param continue A logical that defines whether the response is returned
 #' directly after rendering or should be made available to subsequent routes
 #' @param ignore_trailing_slash Should `path` be taken exactly or should both a
 #' version with and without a terminating slash be accepted
+#' @param cache_dir The location of the render cache. By default a temporary
+#' folder is created for it.
+#' @param cache_by_id Should caching be scoped by the user id. If the rendering
+#' is dependent on user-level access to different data this is necessary to
+#' avoid data leakage.
+#' @param param_caster An optional function to convert the query/body parameters
+#' into the expected type, or a list with elements `query` and `body` each
+#' holding a function to convert their respective parts into the expected type.
 #'
 #' @return A [route] object
 #'
 #' @export
 #'
-report_route <- function(path, file, ..., max_age = Inf, async = TRUE, finalize = NULL, continue = FALSE, ignore_trailing_slash = FALSE) {
+report_route <- function(
+  path,
+  file,
+  ...,
+  max_age = Inf,
+  async = TRUE,
+  finalize = NULL,
+  continue = FALSE,
+  ignore_trailing_slash = FALSE,
+  cache_dir = tempfile(pattern = "routr_report"),
+  cache_by_id = FALSE,
+  param_caster = identity
+) {
   if (!fs::file_exists(file)) {
     cli::cli_abort("{.arg file} does not point to an existing file")
   }
   check_number_whole(max_age, min = 0, allow_infinite = TRUE)
   check_bool(continue)
   check_function(finalize, allow_null = TRUE)
-  if (!is.null(finalize) && !"..." %in% fn_fmls_names(finalize)) {
-    cli::cli_abort("{.arg finalize} must be a function taking {.arg ...} as argument")
+  if (!is.null(finalize) && length(fn_fmls_names(finalize)) < 3) {
+    cli::cli_abort(
+      "{.arg finalize} take at least three arguments"
+    )
   }
   check_bool(async)
   if (async) {
     check_installed("mirai")
+  }
+  check_string(cache_dir)
+  check_bool(cache_by_id)
+
+  if (is_function(param_caster)) {
+    param_caster <- list(body = param_caster, query = param_caster)
+  }
+  if (
+    !is_bare_list(param_caster) ||
+      !is_function(param_caster$body) ||
+      !is_function(param_caster$query)
+  ) {
+    stop_input_type(
+      param_caster,
+      "a function or a list with elements `query` and `body` containing functions"
+    )
   }
 
   is_quarto <- grepl("\\.qmd$", file, ignore.case = TRUE)
@@ -64,54 +102,97 @@ report_route <- function(path, file, ..., max_age = Inf, async = TRUE, finalize 
     info <- rmarkdown_info(file)
   }
 
-  cache_dir <- tempfile(pattern = "routr_report")
-  fs::dir_create(cache_dir)
+  if (!fs::dir_exists(cache_dir)) {
+    fs::dir_create(cache_dir)
+  }
 
-  info$accepts <- unlist(format_info$mime_render_types[info$formats], use.names = FALSE)
-  info$ext <- unlist(format_info$mime_render_ext[info$formats], use.names = FALSE)
-  keep <- !duplicated(info$accepts)
-  info$accepts <- info$accepts[keep]
-  info$ext <- info$ext[keep]
-  info$formats <- info$formats[keep]
+  info$accepts <- unlist(
+    format_info$mime_render_types[info$formats],
+    use.names = FALSE
+  )
+  info$ext <- unlist(
+    format_info$mime_render_ext[info$formats],
+    use.names = FALSE
+  )
+  first <- !duplicated(info$accepts)
 
   route <- Route$new()
-  route$add_handler("get", path, function(request, response, keys, ...) {
+  main_handler <- function(request, response, keys, id, ...) {
     if (length(info$accepts) > 1) {
       response$append_header('Vary', 'Accept')
     }
     type <- request$accepts(info$accepts)
     if (is.null(type)) {
-      reqres::abort_not_acceptable("The report does not provide a format producing the requested mime type")
+      reqres::abort_not_acceptable(
+        "The report does not provide a format producing the requested mime type"
+      )
     }
     which_type <- match(type, info$accepts)
     format <- info$formats[which_type]
-    ext <- info$ext[which_type]
     response$status <- 307L
-    new_loc <- sub("/?$", paste0(".", ext), path)
     if (grepl("/$", path)) {
-      new_loc <- paste0("../", sub("^/", "", new_loc))
+      new_loc <- format
+    } else {
+      new_loc <- paste0(basename(path), "/", format)
     }
     response$set_header("location", paste0(new_loc, request$querystring))
 
     return(FALSE)
+  }
+  route$add_handler("get", path, main_handler)
+  route$add_handler("post", path, main_handler)
+
+  route$add_handler("delete", path, function(request, response, keys, id, ...) {
+    cache <- fs::path(cache_dir, if (cache_by_id) id else "")
+    cached_files <- fs::dir_ls(cache, all = TRUE, recurse = TRUE)
+    fs::file_delete(cached_files)
+    response$status <- 204L
+    return(FALSE)
   })
+
   lapply(seq_along(info$ext), function(i) {
-    direct_path <- sub("/?$", paste0(".", info$ext[i]), path)
+    direct_path <- sub("/?$", paste0("/", info$format[i]), path)
+    ext_path <- sub("/?$", paste0(".", info$ext[i]), path)
     type <- info$accepts[i]
     ext <- info$ext[i]
     render_params$output_format <- info$formats[i]
-    route$add_handler("get", direct_path, function(request, response, keys, ...) {
-      report_params <- request$query[intersect(names(request$query), info$params)]
+    handler <- function(request, response, keys, id, server, ...) {
+      if (request$method == "post") {
+        request$parse("application/json" = reqres::parse_json())
+        report_params <- request$body[intersect(
+          names(request$body),
+          names(info$params)
+        )]
+        report_params <- param_caster$body(report_params)
+      } else {
+        report_params <- request$query[intersect(
+          names(request$query),
+          names(info$params)
+        )]
+        report_params <- param_caster$query(report_params)
+      }
       if (length(report_params) > 0) {
         report_params <- report_params[order(names(report_params))]
       }
-      param_hash <- hash(report_params)
-      render_path <- fs::path(cache_dir, param_hash, ext = ext)
+      param_hash <- paste0(info$format[i], "_", hash(report_params))
+      render_path <- fs::path(
+        cache_dir,
+        if (cache_by_id) id else "",
+        param_hash,
+        ext = ext
+      )
 
       link_sub <- paste0(fs::path_file(path), "\\1", request$querystring)
       link_pattern <- paste0(param_hash, "(\\.\\w+)")
 
-      if (!fs::file_exists(render_path) || as.numeric(Sys.time() - fs::file_info(render_path)$modification_time, units = "secs") > max_age) {
+      if (
+        !fs::file_exists(render_path) ||
+          as.numeric(
+            Sys.time() - fs::file_info(render_path)$modification_time,
+            units = "secs"
+          ) >
+            max_age
+      ) {
         if (async) {
           env <- list2env(list(
             is_quarto = is_quarto,
@@ -133,12 +214,15 @@ report_route <- function(path, file, ..., max_age = Inf, async = TRUE, finalize 
               response$file <- render_path
               response$type <- type
               if (!is.null(finalize)) {
-                finalize(request, response, ...)
+                finalize(request, response, server)
               }
               continue
             },
             function(error) {
-              reqres::abort_internal_error("Failed to render report", parent = error)
+              reqres::abort_internal_error(
+                "Failed to render report",
+                parent = error
+              )
             }
           )
           return(promise)
@@ -153,10 +237,29 @@ report_route <- function(path, file, ..., max_age = Inf, async = TRUE, finalize 
       response$file <- render_path
       response$type <- type
       if (!is.null(finalize)) {
-        finalize(request, response, ...)
+        finalize(request, response, server)
       }
       continue
-    })
+    }
+    delete_handler <- function(request, response, keys, id, ...) {
+      cache <- fs::path(cache_dir, if (cache_by_id) id else "")
+      cached_files <- fs::dir_ls(
+        cache,
+        all = TRUE,
+        regexp = paste0("(.*/|^)", info$format[i], "_[^/]+")
+      )
+      fs::file_delete(cached_files)
+      response$status <- 204L
+      return(FALSE)
+    }
+    route$add_handler("get", direct_path, handler)
+    route$add_handler("post", direct_path, handler)
+    route$add_handler("delete", direct_path, delete_handler)
+    if (first[i] && !path %in% c("/", "")) {
+      route$add_handler("get", ext_path, handler)
+      route$add_handler("post", ext_path, handler)
+      route$add_handler("delete", ext_path, delete_handler)
+    }
   })
   route
 }
@@ -191,7 +294,10 @@ render_expr <- quote({
 #'
 #' @param file The path to the report
 #'
-#' @return A list with mime types of output and acceptable parameters
+#' @return A list with the formats, mime types, and file extensions of output,
+#' acceptable parameters (a named list with names corresponding to the parameter
+#' name and value corresponding to default value), and the title of the
+#' document. For quarto documents the default values of parameters are omitted.
 #'
 #' @export
 #' @keywords internal
@@ -203,8 +309,14 @@ report_info <- function(file) {
     rmarkdown_info(file)
   }
   list(
+    formats = formats$formats,
     mime_types = unique(unlist(format_info$mime_render_types[formats$formats])),
-    query_params = formats$params
+    ext = unlist(
+      format_info$mime_render_ext[formats$formats],
+      use.names = FALSE
+    ),
+    query_params = formats$params,
+    title = formats$title
   )
 }
 
@@ -212,21 +324,42 @@ quarto_info <- function(input) {
   res <- quarto::quarto_inspect(input)
   params <- NULL
   formats <- NULL
+  title <- res$fileInformation[[input]]$metadata$title
   if (res$engines == "knitr") {
-    params <- names(res$fileInformation[[input]]$metadata$params)
+    params <- res$fileInformation[[input]]$metadata$params
+    formats <- tolower(names(res$formats))
+  } else if (res$engines == "jupyter") {
+    cells <- res$fileInformation[[input]]$codeCells
+    param_cell <- vapply(
+      cells$metadata$tags,
+      function(tags) {
+        "parameters" %in% tags
+      },
+      logical(1)
+    )
+    if (any(param_cell)) {
+      source <- cells$source[param_cell]
+      source <- unlist(strsplit(source, "\n"))
+      params <- stringi::stri_match_first_regex(source, "^(.*?)(\\s|=)")[, 2]
+      params <- set_names(params[!is.na(params)])
+      params[] <- list(NULL)
+    }
     formats <- tolower(names(res$formats))
   }
   list(
-    params = params %||% character(),
-    formats = formats %||% "html"
+    params = params %||% list(),
+    formats = formats %||% "html",
+    title = title %||% ""
   )
 }
 rmarkdown_info <- function(input) {
   check_installed("knitr")
+  check_installed("rmarkdown")
   params <- knitr::knit_params(paste0(readLines(input), collapse = "\n"))
   list(
-    params = unname(vapply(params, `[[`, character(1), "name")),
-    formats = rmarkdown::all_output_formats(input) %||% "html_document"
+    params = lapply(params, `[[`, "value"),
+    formats = rmarkdown::all_output_formats(input) %||% "html_document",
+    title = rmarkdown::yaml_front_matter(input)$title %||% ""
   )
 }
 
@@ -250,9 +383,16 @@ rmarkdown_info <- function(input) {
 #' @export
 #' @keywords internal
 #'
-register_report_format <- function(format, mime_type, extension = NULL, force = FALSE) {
+register_report_format <- function(
+  format,
+  mime_type,
+  extension = NULL,
+  force = FALSE
+) {
   if (format %in% names(format_info$mime_render_types) && !force) {
-    cli::cli_abort("{.val {format}} already exists. Set {.code force = TRUE} to overwrite")
+    cli::cli_abort(
+      "{.val {format}} already exists. Set {.code force = TRUE} to overwrite"
+    )
   }
   if (is.null(extension)) {
     extension <- reqres::mime_type_info(mime_type)$extensions[[1]][[1]]

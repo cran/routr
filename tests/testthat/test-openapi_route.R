@@ -68,7 +68,9 @@ test_that('openapi_route properly handles different root depths', {
   nested_route <- openapi_route(json_spec, root = "/api/v1/docs")
   expect_true(!is.null(nested_route$get_handler("get", "/api/v1/docs")))
   expect_true(!is.null(nested_route$get_handler("get", "/api/v1/docs/")))
-  expect_true(!is.null(nested_route$get_handler("get", "/api/v1/docs/index.html")))
+  expect_true(
+    !is.null(nested_route$get_handler("get", "/api/v1/docs/index.html"))
+  )
 })
 
 test_that('openapi_route sets correct response for the spec file', {
@@ -88,7 +90,7 @@ test_that('openapi_route sets correct response for the spec file', {
   # Check the result
   expect_false(result)
   expect_equal(res$status, 200L)
-  expect_match(res$file, "fixtures/sample_openapi.json", fixed = TRUE)
+  expect_match(res$body, '{"openapi":"3.0.0",', fixed = TRUE)
   expect_equal(res$type, "application/json")
 })
 

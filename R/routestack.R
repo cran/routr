@@ -81,7 +81,8 @@
 #' req <- reqres::Request$new(rook)
 #' routes$dispatch(req)
 #'
-RouteStack <- R6Class('RouteStack',
+RouteStack <- R6Class(
+  'RouteStack',
   public = list(
     # Methods
     #' @description Create a new RouteStack
@@ -132,17 +133,26 @@ RouteStack <- R6Class('RouteStack',
       }
 
       if (is.AssetRoute(route)) {
-        if (is.null(after)) after <- length(private$assets)
+        if (is.null(after)) {
+          after <- length(private$assets)
+        }
         check_number_whole(after, min = 0)
         private$assets <- append(private$assets, list(route), after)
         private$assetNames <- append(private$assetNames, name, after)
       } else if (inherits(route, "Route")) {
-        if (is.null(after)) after <- length(private$stack)
+        if (is.null(after)) {
+          after <- length(private$stack)
+        }
         check_number_whole(after, min = 0)
         private$stack <- append(private$stack, list(route), after)
         private$routeNames <- append(private$routeNames, name, after)
       } else {
-        stop_input_type(route, cli::cli_fmt(cli::cli_text("a {.cls Route} or {.cls AssetRoute} object")))
+        stop_input_type(
+          route,
+          cli::cli_fmt(cli::cli_text(
+            "a {.cls Route} or {.cls AssetRoute} object"
+          ))
+        )
       }
 
       invisible(self)
@@ -212,7 +222,7 @@ RouteStack <- R6Class('RouteStack',
 
       invisible(self)
     },
-    #' @description asses a [reqres::Request] through the stack of routes in
+    #' @description Passes a [reqres::Request] through the stack of routes in
     #' sequence until one of the routes return `FALSE` or every route have been
     #' passed through. `...` will be passed on to the dispatch of each `Route`
     #' on the stack.
@@ -224,7 +234,9 @@ RouteStack <- R6Class('RouteStack',
       }
 
       continue <- private$redirector$dispatch(request, ...)
-      if (!isTRUE(continue)) return(FALSE)
+      if (!isTRUE(continue)) {
+        return(FALSE)
+      }
 
       promise <- NULL
 
@@ -249,11 +261,32 @@ RouteStack <- R6Class('RouteStack',
         }
       }
 
-      if (is.null(promise))  {
+      if (is.null(promise)) {
         continue
       } else {
         promise
       }
+    },
+    #' @description asses a [reqres::Request] through the stack of routes in
+    #' sequence until a handler is found. `...` will be passed on to the
+    #' dispatch of each `Route` on the stack. This dispatch does not require the
+    #' handler to return a boolean, and will return the value of the handler
+    #' call or `NULL` if no handler is matched
+    #' @param request The request to route
+    #' @param ... Additional arguments to pass on to the handlers
+    dispatch_to_first_match = function(request, ...) {
+      if (!is.Request(request)) {
+        request <- as.Request(request)
+      }
+
+      for (route in private$stack) {
+        val <- route$dispatch(request, ..., .require_bool_output = FALSE)
+        if (!has_no_match(val)) {
+          return(val)
+        }
+      }
+
+      return(NULL)
     },
     #' @description Method for use by `fiery` when attached as a plugin. Should
     #' not be called directly.
@@ -263,17 +296,23 @@ RouteStack <- R6Class('RouteStack',
     #'
     on_attach = function(app, on_error = deprecated(), ...) {
       if (!inherits(app, "Fire")) {
-        stop_input_type(route, cli::cli_fmt(cli::cli_text("a {.cls Fire} object")))
+        stop_input_type(
+          route,
+          cli::cli_fmt(cli::cli_text("a {.cls Fire} object"))
+        )
       }
       if (lifecycle::is_present(on_error)) {
         lifecycle::deprecate_soft("0.5.0", "RouteStack$on_attach(on_error)")
       }
       if (!is.null(private$fiery_app)) {
         if (private$fiery_app != app) {
-          cli::cli_abort("This RouteStack is already being used as plugin in another fiery app")
+          cli::cli_abort(
+            "This RouteStack is already being used as plugin in another fiery app"
+          )
         }
         return()
       }
+      private$fiery_app <- app
       if (length(private$assets) != 0) {
         for (a in private$assets) {
           app$serve_static(
@@ -292,18 +331,38 @@ RouteStack <- R6Class('RouteStack',
       }
       if (self$attach_to == 'message') {
         check_function(private$path_from_message)
-        app$on('message', function(server, id, binary, message, request, arg_list) {
-          rook <- request$origin
-          rook$PATH_INFO <- private$path_from_message(message, binary)
-          rook$HTTP_Content_Type <- if (binary) 'application/octet-stream' else 'text/plain'
-          request <- as.Request(rook)
-          request$set_body(message)
-          self$dispatch(request, server = server, id = id, arg_list = arg_list)
-        })
+        app$on(
+          'message',
+          function(server, id, binary, message, request, arg_list) {
+            rook <- request$origin
+            rook$PATH_INFO <- private$path_from_message(message, binary)
+            rook$HTTP_Content_Type <- if (binary) {
+              'application/octet-stream'
+            } else {
+              'text/plain'
+            }
+            request <- as.Request(rook)
+            request$set_body(message)
+            self$dispatch(
+              request,
+              server = server,
+              id = id,
+              arg_list = arg_list
+            )
+          }
+        )
       } else {
-        app$on(self$attach_to, function(server, id, request, arg_list = list()) {
-          self$dispatch(request, server = server, id = id, arg_list = arg_list)
-        })
+        app$on(
+          self$attach_to,
+          function(server, id, request, arg_list = list()) {
+            self$dispatch(
+              request,
+              server = server,
+              id = id,
+              arg_list = arg_list
+            )
+          }
+        )
       }
     },
     #' @description Merge two route stacks together adding all routes from the
@@ -312,12 +371,17 @@ RouteStack <- R6Class('RouteStack',
     #'
     merge_stack = function(stack) {
       if (!inherits(stack, "RouteStack")) {
-        stop_input_type(stack, cli::cli_fmt(cli::cli_text("a {.cls RouteStack} object")))
+        stop_input_type(
+          stack,
+          cli::cli_fmt(cli::cli_text("a {.cls RouteStack} object"))
+        )
       }
       if (length(stack$routes) != 0) {
         current_routes <- self$routes
         for (route in stack$routes) {
-          route_name <- make.unique(c(current_routes, route), "_")[length(current_routes) + 1]
+          route_name <- make.unique(c(current_routes, route), "_")[
+            length(current_routes) + 1
+          ]
           self$add_route(stack$get_route(route), route_name)
           stack$remove_route(route)
         }
@@ -327,7 +391,9 @@ RouteStack <- R6Class('RouteStack',
   active = list(
     #' @field attach_to The event this routr should respond to
     attach_to = function(value) {
-      if (missing(value)) return(private$attachAt)
+      if (missing(value)) {
+        return(private$attachAt)
+      }
       value <- arg_match0(value, c('request', 'header', 'message'))
       private$attachAt <- value
     },
@@ -353,6 +419,7 @@ RouteStack <- R6Class('RouteStack',
     assetNames = character(),
     attachAt = 'request',
     path_from_message = NULL,
-    redirector = NULL
+    redirector = NULL,
+    fiery_app = NULL
   )
 )

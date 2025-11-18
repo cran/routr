@@ -1,3 +1,21 @@
+# routr 1.1.0
+
+* You can now set the cache folder when using `report_route()` so that it can be
+  reused between instances (#26)
+* Output types for reports can now be selected by name by appending the name of
+  the format to the path (e.g. `/report/revealjs`). This is in addition to the
+  current options of content negotiation and file extension appending (#28)
+* Report parameters can now be passed in with the request body using a POST
+  request. The parameters must be formatted as JSON (#27)
+* Report caching can now be scoped to the client id (#31)
+* Quarto reports based on python now works properly with regards to extracting
+  output formats and parameters (#29)
+* Cached reports can now be deleted explicitly by sending a DELETE request.
+  All versions of the report (with regard to parameters) are deleted. If you use
+  a format-specific path only cached versions of that format is deleted (#30)
+* Add support for OpenTelemetry through the otel package (#33)
+* The `openapi_route()` now better handles docs served through a proxy
+
 # routr 1.0.0
 
 * Use native rlang type checking instead of assertthat
